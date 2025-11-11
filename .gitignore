@@ -1,0 +1,27 @@
+# Credentials and secrets
+.env
+credentials.json
+*.json
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+
+# Scraper data
+last_update.txt
+*.png
+*.jpg
+*.jpeg
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
