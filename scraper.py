@@ -266,8 +266,37 @@ def scrape_sentiment_data():
                 for cell in header_cells:
                     headers.append(cell.inner_text().strip())
 
-                # Get rows
+                # Scroll to load all rows (for lazy-loaded tables)
+                print("Scrolling to load all table rows...")
+                last_row_count = 0
+                scroll_attempts = 0
+                max_scroll_attempts = 20
+
+                while scroll_attempts < max_scroll_attempts:
+                    # Get current row count
+                    rows = table.query_selector_all('tbody tr')
+                    current_row_count = len(rows)
+
+                    print(f"  Attempt {scroll_attempts + 1}: Found {current_row_count} rows")
+
+                    # If row count hasn't changed, we've loaded all rows
+                    if current_row_count == last_row_count:
+                        print(f"  No new rows loaded, total: {current_row_count}")
+                        break
+
+                    last_row_count = current_row_count
+
+                    # Scroll to the last row to trigger lazy loading
+                    if rows:
+                        last_row = rows[-1]
+                        last_row.scroll_into_view_if_needed()
+                        time.sleep(0.5)
+
+                    scroll_attempts += 1
+
+                # Get all rows after scrolling
                 rows = table.query_selector_all('tbody tr')
+                print(f"Final row count: {len(rows)}")
 
                 for row in rows:
                     cells = row.query_selector_all('td')
@@ -362,12 +391,13 @@ def update_google_sheet(data):
         print(f"Adding {len(rows_to_add)} rows starting from row {start_row}")
 
         # Use batch update for better performance and compatibility
+        write_success = False
         try:
             # Method 1: Try using values().append() API
             print("Method 1: Using values().append() API...")
             worksheet.append_rows(rows_to_add, value_input_option='RAW')
             print(f"✓ Successfully added {len(data['data'])} rows to Google Sheet")
-            return True
+            write_success = True
         except Exception as e1:
             print(f"Method 1 failed: {e1}")
 
@@ -380,7 +410,7 @@ def update_google_sheet(data):
                 print(f"Updating range: {range_name}")
                 worksheet.update(range_name, rows_to_add, value_input_option='RAW')
                 print(f"✓ Successfully added {len(data['data'])} rows to Google Sheet")
-                return True
+                write_success = True
             except Exception as e2:
                 print(f"Method 2 failed: {e2}")
 
@@ -399,10 +429,99 @@ def update_google_sheet(data):
                             continue
 
                     print(f"✓ Added {len(rows_to_add)} rows to Google Sheet (with potential errors)")
-                    return True
+                    write_success = True
                 except Exception as e3:
                     print(f"Method 3 failed: {e3}")
                     raise Exception(f"All methods failed. Last error: {e3}")
+
+        # Apply column formatting if write was successful
+        if write_success:
+            try:
+                print("Applying column formatting...")
+                # Column indices (0-based):
+                # A=0, B=1, C=2, D=3, E=4, F=5, G=6, H=7, I=8, J=9, K=10, L=11, M=12
+                # E, F, I, L, M = numbers (4, 5, 8, 11, 12)
+                # G, K = percentages (6, 10)
+                # H = date (7)
+
+                format_requests = []
+
+                # Number format for E, F, I, L, M columns (decimal with comma)
+                number_columns = [4, 5, 8, 11, 12]  # E, F, I, L, M
+                for col in number_columns:
+                    format_requests.append({
+                        "repeatCell": {
+                            "range": {
+                                "sheetId": worksheet.id,
+                                "startColumnIndex": col,
+                                "endColumnIndex": col + 1,
+                                "startRowIndex": 1  # Skip header
+                            },
+                            "cell": {
+                                "userEnteredFormat": {
+                                    "numberFormat": {
+                                        "type": "NUMBER",
+                                        "pattern": "#,##0.00"
+                                    }
+                                }
+                            },
+                            "fields": "userEnteredFormat.numberFormat"
+                        }
+                    })
+
+                # Percentage format for G, K columns
+                percent_columns = [6, 10]  # G, K
+                for col in percent_columns:
+                    format_requests.append({
+                        "repeatCell": {
+                            "range": {
+                                "sheetId": worksheet.id,
+                                "startColumnIndex": col,
+                                "endColumnIndex": col + 1,
+                                "startRowIndex": 1  # Skip header
+                            },
+                            "cell": {
+                                "userEnteredFormat": {
+                                    "numberFormat": {
+                                        "type": "PERCENT",
+                                        "pattern": "0.00%"
+                                    }
+                                }
+                            },
+                            "fields": "userEnteredFormat.numberFormat"
+                        }
+                    })
+
+                # Date format for H column
+                format_requests.append({
+                    "repeatCell": {
+                        "range": {
+                            "sheetId": worksheet.id,
+                            "startColumnIndex": 7,  # H
+                            "endColumnIndex": 8,
+                            "startRowIndex": 1  # Skip header
+                        },
+                        "cell": {
+                            "userEnteredFormat": {
+                                "numberFormat": {
+                                    "type": "DATE",
+                                    "pattern": "dd.mm.yyyy"
+                                }
+                            }
+                        },
+                        "fields": "userEnteredFormat.numberFormat"
+                    }
+                })
+
+                # Apply all formatting
+                spreadsheet.batch_update({"requests": format_requests})
+                print("✓ Column formatting applied successfully")
+
+            except Exception as e_format:
+                print(f"Warning: Could not apply formatting: {e_format}")
+                # Don't fail the whole operation if formatting fails
+
+        return write_success
 
     except Exception as e:
         print(f"Error updating Google Sheet: {e}")
