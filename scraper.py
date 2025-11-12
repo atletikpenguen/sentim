@@ -129,7 +129,6 @@ def scrape_sentiment_data():
             # Validate that the correct tab was clicked by checking for table
             try:
                 print("Method 1: Trying to find tab with ID ending in '-tab-999'...")
-                table_selector = '.step-lines-tables'
 
                 # Try different tab indices (0-10)
                 for i in range(11):
@@ -146,17 +145,44 @@ def scrape_sentiment_data():
                         }})()
                     """)
                     if result:
-                        time.sleep(3)  # Wait longer for table to load
-                        # Check if the correct table appeared
-                        table_check = page.query_selector(table_selector)
-                        if table_check:
-                            print(f"✓ Tab clicked successfully: {tab_id} (table found)")
+                        time.sleep(4)  # Wait longer for table to load
+
+                        # Check for multiple types of table indicators
+                        # 1. Check for .step-lines-tables class
+                        # 2. Check for any table element
+                        # 3. Check row count
+                        table_found = False
+
+                        # Try class selector first
+                        table_check1 = page.query_selector('.step-lines-tables')
+                        if table_check1:
+                            tables = page.query_selector_all('.step-lines-tables table')
+                            if tables and len(tables) > 0:
+                                rows = tables[0].query_selector_all('tbody tr')
+                                row_count = len(rows)
+                                print(f"  Found .step-lines-tables with {row_count} rows")
+                                if row_count > 10:  # We want the big table, not the small one
+                                    table_found = True
+
+                        # If not found, try generic table selector
+                        if not table_found:
+                            tables = page.query_selector_all('table')
+                            for table in tables:
+                                rows = table.query_selector_all('tbody tr')
+                                row_count = len(rows)
+                                print(f"  Found table with {row_count} rows")
+                                if row_count > 10:  # We want the big table
+                                    table_found = True
+                                    break
+
+                        if table_found:
+                            print(f"✓ Tab clicked successfully: {tab_id} (table with >10 rows found)")
                             tab_clicked = True
                             time.sleep(2)
                             page.screenshot(path="step4_tab_clicked.png")
                             break
                         else:
-                            print(f"  Tab {tab_id} clicked but no table found, trying next...")
+                            print(f"  Tab {tab_id} clicked but no table with >10 rows found, trying next...")
             except Exception as e:
                 print(f"Method 1 failed: {e}")
 
