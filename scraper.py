@@ -19,10 +19,12 @@ load_dotenv()
 # Configuration
 LOGIN_URL = "https://app.sentimentalgo.com/signin"
 TARGET_URL = "https://app.sentimentalgo.com/bist/lines"
+INDEX_URL = "https://app.sentimentalgo.com/index/home"
 EMAIL = os.getenv("SENTIMENT_EMAIL", "atletikpenguen@gmail.com")
 PASSWORD = os.getenv("SENTIMENT_PASSWORD", "qwe1323")
 SHEET_ID = os.getenv("SHEET_ID", "1daGabBAYapAd0sDqcvI6qn908Id2hz8Y")
 SHEET_NAME = os.getenv("SHEET_NAME", "sent")
+INDEX_SHEET_NAME = os.getenv("INDEX_SHEET_NAME", "Sayfa2")
 LAST_UPDATE_FILE = "last_update.txt"
 
 # Google Sheets scope
@@ -317,16 +319,16 @@ def scrape_sentiment_data():
             page.screenshot(path="screenshot.png")
             print("Screenshot saved as screenshot.png")
 
-            # Close browser
-            browser.close()
+            # DON'T close browser yet - we need it for index data
+            # browser.close()
 
-            # Return data with headers
+            # Return browser, page, and data
             # NOTE: Do NOT save last_update here! Only save after successful Google Sheets write
-            return {
+            return (browser, page, {
                 'update_time': current_update,
                 'data': all_data,
                 'headers': ['Tarih', 'Son Güncelleme'] + headers if headers else ['Tarih', 'Son Güncelleme']
-            }
+            })
 
         except Exception as e:
             print(f"Error during scraping: {e}")
@@ -338,6 +340,137 @@ def scrape_sentiment_data():
                 pass
             browser.close()
             raise
+
+
+def scrape_index_data(page):
+    """Scrape index data from pano tab - uses existing logged-in page"""
+    print("\n" + "="*50)
+    print("Starting Index Data Scraper...")
+    print("="*50)
+
+    try:
+        # Navigate to index page
+        print(f"Navigating to index page: {INDEX_URL}")
+        page.goto(INDEX_URL, wait_until='domcontentloaded', timeout=30000)
+        time.sleep(3)
+        page.screenshot(path="index_step1_home.png")
+
+        # Close any popups
+        print("Checking for popups...")
+        try:
+            popup_close_selectors = [
+                'button.ant-modal-close',
+                '.ant-modal-close-x',
+                'button:has-text("Kapat")',
+                'button:has-text("Close")'
+            ]
+            for selector in popup_close_selectors:
+                try:
+                    close_buttons = page.query_selector_all(selector)
+                    for button in close_buttons:
+                        if button.is_visible():
+                            button.click()
+                            time.sleep(1)
+                except:
+                    pass
+        except:
+            pass
+
+        # Click on "Pano" tab
+        print("Looking for 'Pano' tab...")
+        pano_clicked = False
+
+        # Try multiple selectors for Pano tab
+        pano_selectors = [
+            '[role="tab"]:has-text("Pano")',
+            'button:has-text("Pano")',
+            '.ant-tabs-tab:has-text("Pano")',
+        ]
+
+        for selector in pano_selectors:
+            try:
+                pano_tab = page.query_selector(selector)
+                if pano_tab and pano_tab.is_visible():
+                    print(f"Found Pano tab with: {selector}")
+                    pano_tab.click()
+                    pano_clicked = True
+                    time.sleep(3)
+                    break
+            except Exception as e:
+                print(f"Selector {selector} failed: {e}")
+
+        if not pano_clicked:
+            # Try finding by text in all tabs
+            all_tabs = page.query_selector_all('[role="tab"]')
+            for tab in all_tabs:
+                tab_text = tab.inner_text().strip()
+                if 'Pano' in tab_text or 'pano' in tab_text.lower():
+                    print(f"Found Pano tab by text: {tab_text}")
+                    tab.click()
+                    pano_clicked = True
+                    time.sleep(3)
+                    break
+
+        if not pano_clicked:
+            print("ERROR: Could not find Pano tab!")
+            return None
+
+        page.screenshot(path="index_step2_pano_clicked.png")
+
+        # Wait for table to load
+        print("Waiting for table...")
+        time.sleep(3)
+
+        # Find table
+        tables = page.query_selector_all('table')
+        if not tables:
+            print("ERROR: No tables found!")
+            return None
+
+        print(f"Found {len(tables)} table(s)")
+
+        # Extract data
+        table = tables[0]
+
+        # Get headers
+        headers = []
+        header_cells = table.query_selector_all('thead th, thead td')
+        for cell in header_cells:
+            headers.append(cell.inner_text().strip())
+
+        # Add "Son Çekilme Tarihi" to headers
+        headers.append('Son Çekilme Tarihi')
+        print(f"Headers: {headers}")
+
+        # Get rows
+        rows = table.query_selector_all('tbody tr')
+        print(f"Found {len(rows)} rows")
+
+        all_data = []
+        current_time = datetime.now().strftime('%d.%m.%Y %H:%M')
+
+        for row in rows:
+            cells = row.query_selector_all('td')
+            row_data = [cell.inner_text().strip() for cell in cells]
+
+            if row_data:
+                # Add timestamp as last column
+                row_data.append(current_time)
+                all_data.append(row_data)
+
+        print(f"Extracted {len(all_data)} rows of index data")
+        page.screenshot(path="index_final.png")
+
+        return {
+            'data': all_data,
+            'headers': headers
+        }
+
+    except Exception as e:
+        print(f"Error scraping index data: {e}")
+        import traceback
+        traceback.print_exc()
+        return None
 
 
 def update_google_sheet(data):
@@ -546,39 +679,192 @@ def update_google_sheet(data):
         return False
 
 
+def update_google_sheet_index(data):
+    """Update Google Sheets Sayfa2 with index data - UPSERT based on first column"""
+    print("\nUpdating Google Sheet (Index Data - Sayfa2)...")
+
+    try:
+        # Load credentials
+        creds_file = os.getenv('GOOGLE_CREDENTIALS_FILE', 'credentials.json')
+
+        if not os.path.exists(creds_file):
+            print(f"Error: Credentials file '{creds_file}' not found!")
+            return False
+
+        # Authenticate
+        creds = Credentials.from_service_account_file(creds_file, scopes=SCOPES)
+        client = gspread.authorize(creds)
+
+        # Open spreadsheet
+        print(f"Opening spreadsheet: {SHEET_ID}")
+        spreadsheet = client.open_by_key(SHEET_ID)
+
+        # Try to get Sayfa2, create if it doesn't exist
+        try:
+            worksheet = spreadsheet.worksheet(INDEX_SHEET_NAME)
+            print(f"Found worksheet: {INDEX_SHEET_NAME}")
+        except gspread.exceptions.WorksheetNotFound:
+            print(f"Worksheet '{INDEX_SHEET_NAME}' not found, creating it...")
+            worksheet = spreadsheet.add_worksheet(title=INDEX_SHEET_NAME, rows=100, cols=20)
+
+        # Get existing data
+        try:
+            existing_data = worksheet.get_all_values()
+            print(f"Existing data rows: {len(existing_data)}")
+        except Exception as e:
+            print(f"Warning: Could not read existing data: {e}")
+            existing_data = []
+
+        # If sheet is empty, add headers
+        if not existing_data:
+            print("Sheet is empty, adding headers...")
+            worksheet.update('A1', [data['headers']], value_input_option='RAW')
+            existing_data = [data['headers']]
+
+        # Build a mapping of first column values to row numbers
+        # existing_data[0] is headers, so data starts from row 2 (index 1)
+        index_map = {}
+        for i, row in enumerate(existing_data[1:], start=2):  # Start from row 2
+            if row:  # Skip empty rows
+                first_col_value = row[0].strip() if row[0] else ''
+                if first_col_value:
+                    index_map[first_col_value] = i
+
+        print(f"Found {len(index_map)} existing index names")
+
+        # Process each data row - UPSERT based on first column
+        updates = []  # List of (range, values) tuples for batch update
+
+        for row_data in data['data']:
+            if not row_data:
+                continue
+
+            first_col_value = row_data[0].strip()
+
+            if first_col_value in index_map:
+                # UPDATE existing row
+                row_num = index_map[first_col_value]
+                print(f"Updating row {row_num}: {first_col_value}")
+
+                # Calculate column range
+                num_cols = len(row_data)
+                if num_cols <= 26:
+                    end_col_letter = chr(64 + num_cols)
+                else:
+                    first_letter = chr(64 + (num_cols - 1) // 26)
+                    second_letter = chr(65 + (num_cols - 1) % 26)
+                    end_col_letter = first_letter + second_letter
+
+                range_name = f'A{row_num}:{end_col_letter}{row_num}'
+                updates.append((range_name, [row_data]))
+
+            else:
+                # INSERT new row at the end
+                next_row = len(existing_data) + 1 + len([u for u in updates if 'A' + str(len(existing_data) + 1) in u[0]])
+                print(f"Inserting new row {next_row}: {first_col_value}")
+
+                num_cols = len(row_data)
+                if num_cols <= 26:
+                    end_col_letter = chr(64 + num_cols)
+                else:
+                    first_letter = chr(64 + (num_cols - 1) // 26)
+                    second_letter = chr(65 + (num_cols - 1) % 26)
+                    end_col_letter = first_letter + second_letter
+
+                range_name = f'A{next_row}:{end_col_letter}{next_row}'
+                updates.append((range_name, [row_data]))
+                index_map[first_col_value] = next_row
+
+        # Perform batch update
+        print(f"Performing {len(updates)} updates...")
+        for range_name, values in updates:
+            try:
+                worksheet.update(range_name, values, value_input_option='RAW')
+            except Exception as e:
+                print(f"Warning: Could not update {range_name}: {e}")
+
+        print(f"✓ Successfully updated {len(updates)} rows in Sayfa2")
+        return True
+
+    except Exception as e:
+        print(f"Error updating index sheet: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
+
 def main():
     """Main function"""
     print("=" * 50)
     print("Sentimentalgo Scraper")
     print("=" * 50)
 
+    browser = None
     try:
-        # Scrape data
+        # Scrape stock data
         result = scrape_sentiment_data()
 
         if result is None:
             print("No new data to update.")
             return
 
-        # Update Google Sheet
-        success = update_google_sheet(result)
+        # Unpack result (browser, page, data)
+        browser, page, stock_data = result
 
-        if success:
+        # Update Google Sheet with stock data
+        print("\n--- Updating Stock Data (Sayfa1) ---")
+        success_stock = update_google_sheet(stock_data)
+
+        if success_stock:
             # Only save last update if Google Sheets write was successful
-            save_last_update(result['update_time'])
-            print("\n" + "=" * 50)
-            print("SUCCESS: Data updated successfully!")
-            print("=" * 50)
+            save_last_update(stock_data['update_time'])
+            print("✓ Stock data updated successfully!")
         else:
-            print("\n" + "=" * 50)
-            print("FAILED: Could not update Google Sheet")
+            print("✗ Failed to update stock data")
             print("⚠️  last_update.txt NOT updated - will retry next time")
-            print("=" * 50)
+
+        # Scrape index data (using the same browser/page)
+        print("\n--- Scraping Index Data ---")
+        index_data = scrape_index_data(page)
+
+        if index_data:
+            # Update Google Sheet with index data
+            print("\n--- Updating Index Data (Sayfa2) ---")
+            success_index = update_google_sheet_index(index_data)
+
+            if success_index:
+                print("✓ Index data updated successfully!")
+            else:
+                print("✗ Failed to update index data")
+        else:
+            print("✗ Failed to scrape index data")
+
+        # Close browser
+        if browser:
+            browser.close()
+            print("\n✓ Browser closed")
+
+        # Print final summary
+        print("\n" + "=" * 50)
+        if success_stock and (not index_data or success_index):
+            print("SUCCESS: All data updated successfully!")
+        elif success_stock:
+            print("PARTIAL SUCCESS: Stock data updated, but index data failed")
+        else:
+            print("FAILED: Could not update data")
+        print("=" * 50)
 
     except Exception as e:
         print(f"\nFATAL ERROR: {e}")
         import traceback
         traceback.print_exc()
+
+        # Try to close browser if still open
+        if browser:
+            try:
+                browser.close()
+            except:
+                pass
 
 
 if __name__ == "__main__":
