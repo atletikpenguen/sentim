@@ -119,135 +119,34 @@ def scrape_sentiment_data():
             page.screenshot(path="step3_target_page.png")
             print(f"Current URL: {page.url}")
 
-            # Step 4: Click on the tab
-            print("Clicking on tab ending with '-tab-999'...")
-
-            # Try multiple methods to find and click the tab
-            tab_clicked = False
-
-            # Method 1: Find any tab with ID ending in "-tab-999" (dynamic ID)
-            # Validate that the correct tab was clicked by checking for table
+            # Step 4: Close any popups that might appear
+            print("Checking for popups to close...")
             try:
-                print("Method 1: Trying to find tab with ID ending in '-tab-999'...")
-
-                # Try different tab indices (0-10)
-                for i in range(11):
-                    tab_id = f'rc-tabs-{i}-tab-999'
-                    print(f"  Trying: {tab_id}")
-                    result = page.evaluate(f"""
-                        (function() {{
-                            var tab = document.getElementById('{tab_id}');
-                            if (tab) {{
-                                tab.click();
-                                return true;
-                            }}
-                            return false;
-                        }})()
-                    """)
-                    if result:
-                        time.sleep(4)  # Wait longer for table to load
-
-                        # Check for multiple types of table indicators
-                        # 1. Check for .step-lines-tables class
-                        # 2. Check for any table element
-                        # 3. Check row count
-                        table_found = False
-
-                        # Try class selector first
-                        table_check1 = page.query_selector('.step-lines-tables')
-                        if table_check1:
-                            tables = page.query_selector_all('.step-lines-tables table')
-                            if tables and len(tables) > 0:
-                                rows = tables[0].query_selector_all('tbody tr')
-                                row_count = len(rows)
-                                print(f"  Found .step-lines-tables with {row_count} rows")
-                                if row_count > 10:  # We want the big table, not the small one
-                                    table_found = True
-
-                        # If not found, try generic table selector
-                        if not table_found:
-                            tables = page.query_selector_all('table')
-                            for table in tables:
-                                rows = table.query_selector_all('tbody tr')
-                                row_count = len(rows)
-                                print(f"  Found table with {row_count} rows")
-                                if row_count > 10:  # We want the big table
-                                    table_found = True
-                                    break
-
-                        if table_found:
-                            print(f"✓ Tab clicked successfully: {tab_id} (table with >10 rows found)")
-                            tab_clicked = True
-                            time.sleep(2)
-                            page.screenshot(path="step4_tab_clicked.png")
-                            break
-                        else:
-                            print(f"  Tab {tab_id} clicked but no table with >10 rows found, trying next...")
+                # Common popup close button selectors
+                popup_close_selectors = [
+                    'button.ant-modal-close',
+                    '.ant-modal-close-x',
+                    'button:has-text("Kapat")',
+                    'button:has-text("Close")',
+                    'button:has-text("×")',
+                    '[aria-label="Close"]'
+                ]
+                for selector in popup_close_selectors:
+                    try:
+                        close_buttons = page.query_selector_all(selector)
+                        for button in close_buttons:
+                            if button.is_visible():
+                                print(f"Closing popup with: {selector}")
+                                button.click()
+                                time.sleep(1)
+                    except:
+                        pass
             except Exception as e:
-                print(f"Method 1 failed: {e}")
+                print(f"Popup close attempt: {e}")
 
-            # Method 2: CSS attribute selector [id$="-tab-999"]
-            if not tab_clicked:
-                try:
-                    print("Method 2: Trying CSS attribute selector [id$='-tab-999']...")
-                    tab_element = page.query_selector('[id$="-tab-999"]')
-                    if tab_element:
-                        tab_id = tab_element.get_attribute('id')
-                        print(f"  Found tab: {tab_id}")
-                        tab_element.scroll_into_view_if_needed()
-                        time.sleep(1)
-                        page.evaluate('(element) => element.click()', tab_element)
-                        print("✓ Tab clicked successfully with CSS selector")
-                        tab_clicked = True
-                        time.sleep(3)
-                        page.screenshot(path="step4_tab_clicked.png")
-                except Exception as e:
-                    print(f"Method 2 failed: {e}")
-
-            # Method 3: Find tab by text containing "999" or "Tümü" (All)
-            if not tab_clicked:
-                try:
-                    print("Method 3: Trying to find tab by text...")
-                    all_tabs = page.query_selector_all('[role="tab"]')
-                    print(f"Found {len(all_tabs)} tabs")
-                    for i, tab in enumerate(all_tabs):
-                        tab_text = tab.inner_text().strip()
-                        tab_id = tab.get_attribute('id') or 'no-id'
-                        print(f"  Tab {i+1}: '{tab_text}' (id: {tab_id})")
-                        # Look for "999" or "Tümü" or "Hepsi" or last numeric tab
-                        if '999' in tab_text or 'Tümü' in tab_text or 'Hepsi' in tab_text or 'All' in tab_text.lower():
-                            print(f"Found matching tab: '{tab_text}'")
-                            tab.scroll_into_view_if_needed()
-                            time.sleep(1)
-                            page.evaluate('(element) => element.click()', tab)
-                            print("✓ Tab clicked successfully by text match")
-                            tab_clicked = True
-                            time.sleep(3)
-                            page.screenshot(path="step4_tab_clicked.png")
-                            break
-                except Exception as e:
-                    print(f"Method 3 failed: {e}")
-
-            # Method 4: Click the last tab as final fallback
-            if not tab_clicked:
-                try:
-                    print("Method 4: Clicking last tab as fallback...")
-                    all_tabs = page.query_selector_all('[role="tab"]')
-                    if all_tabs:
-                        last_tab = all_tabs[-1]
-                        last_tab.scroll_into_view_if_needed()
-                        time.sleep(1)
-                        page.evaluate('(element) => element.click()', last_tab)
-                        print("✓ Clicked last tab as fallback")
-                        tab_clicked = True
-                        time.sleep(3)
-                        page.screenshot(path="step4_tab_fallback.png")
-                except Exception as e:
-                    print(f"Method 4 failed: {e}")
-
-            if not tab_clicked:
-                print("⚠️  WARNING: Could not click any tab, proceeding anyway...")
-                page.screenshot(path="step4_no_tab_clicked.png")
+            # No need to click tabs - table is directly on the page!
+            print("Table is directly on the page, no tab clicking needed")
+            time.sleep(2)
 
             # Step 5: Get last update time
             print("Checking last update time...")
@@ -331,49 +230,41 @@ def scrape_sentiment_data():
 
             print(f"Found {len(tables)} table(s)")
 
-            # Extract data from tables
+            # Extract data from tables WITH PAGINATION
             all_data = []
 
-            for table_idx, table in enumerate(tables):
-                print(f"Processing table {table_idx + 1}...")
-
-                # Get headers
-                headers = []
-                header_cells = table.query_selector_all('thead th, thead td')
+            # Get headers from first table
+            headers = []
+            if tables:
+                header_cells = tables[0].query_selector_all('thead th, thead td')
                 for cell in header_cells:
                     headers.append(cell.inner_text().strip())
+                print(f"Headers: {headers}")
 
-                # Scroll to load all rows (for lazy-loaded tables)
-                print("Scrolling to load all table rows...")
-                last_row_count = 0
-                scroll_attempts = 0
-                max_scroll_attempts = 20
+            # Process all pagination pages
+            current_page = 1
+            max_pages = 10  # Safety limit
 
-                while scroll_attempts < max_scroll_attempts:
-                    # Get current row count
-                    rows = table.query_selector_all('tbody tr')
-                    current_row_count = len(rows)
+            while current_page <= max_pages:
+                print(f"\n--- Processing page {current_page} ---")
 
-                    print(f"  Attempt {scroll_attempts + 1}: Found {current_row_count} rows")
+                # Wait for table to load
+                time.sleep(2)
 
-                    # If row count hasn't changed, we've loaded all rows
-                    if current_row_count == last_row_count:
-                        print(f"  No new rows loaded, total: {current_row_count}")
-                        break
+                # Re-query tables on current page
+                tables = page.query_selector_all(f'{table_selector} table')
+                if not tables:
+                    tables = page.query_selector_all('table')
 
-                    last_row_count = current_row_count
+                if not tables:
+                    print("No tables found on current page")
+                    break
 
-                    # Scroll to the last row to trigger lazy loading
-                    if rows:
-                        last_row = rows[-1]
-                        last_row.scroll_into_view_if_needed()
-                        time.sleep(0.5)
-
-                    scroll_attempts += 1
-
-                # Get all rows after scrolling
+                # Extract data from current page
+                table = tables[0]  # Use first table
                 rows = table.query_selector_all('tbody tr')
-                print(f"Final row count: {len(rows)}")
+                page_row_count = len(rows)
+                print(f"Found {page_row_count} rows on page {current_page}")
 
                 for row in rows:
                     cells = row.query_selector_all('td')
@@ -383,6 +274,42 @@ def scrape_sentiment_data():
                         # Add timestamp and update info
                         row_with_meta = [datetime.now().strftime('%d.%m.%Y %H:%M'), current_update] + row_data
                         all_data.append(row_with_meta)
+
+                # Take screenshot of current page
+                page.screenshot(path=f"page_{current_page}.png")
+
+                # Try to find and click "next page" button
+                print("Looking for next page button...")
+                next_button_found = False
+
+                try:
+                    # Look for next button with various selectors
+                    next_selectors = [
+                        '.ant-pagination-next:not(.ant-pagination-disabled)',
+                        'li.ant-pagination-next:not(.ant-pagination-disabled) button',
+                        'button.ant-pagination-item-link[aria-label*="next"]',
+                        '[title="Next Page"]'
+                    ]
+
+                    for selector in next_selectors:
+                        next_button = page.query_selector(selector)
+                        if next_button and next_button.is_visible():
+                            # Check if button is not disabled
+                            is_disabled = next_button.evaluate('el => el.disabled || el.parentElement.classList.contains("ant-pagination-disabled")')
+                            if not is_disabled:
+                                print(f"Clicking next button: {selector}")
+                                next_button.click()
+                                next_button_found = True
+                                time.sleep(3)  # Wait for new page to load
+                                break
+                except Exception as e:
+                    print(f"Error finding next button: {e}")
+
+                if not next_button_found:
+                    print(f"No more pages found. Finished at page {current_page}")
+                    break
+
+                current_page += 1
 
             print(f"Extracted {len(all_data)} rows of data")
 
