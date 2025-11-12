@@ -743,6 +743,7 @@ def update_google_sheet_index(data):
 
         # Process each data row - UPSERT based on first column
         updates = []  # List of (range, values) tuples for batch update
+        next_available_row = len(existing_data) + 1  # Track next available row for inserts
 
         for row_data in data['data']:
             if not row_data:
@@ -769,8 +770,7 @@ def update_google_sheet_index(data):
 
             else:
                 # INSERT new row at the end
-                next_row = len(existing_data) + 1 + len([u for u in updates if 'A' + str(len(existing_data) + 1) in u['range']])
-                print(f"Inserting new row {next_row}: {first_col_value}")
+                print(f"Inserting new row {next_available_row}: {first_col_value}")
 
                 num_cols = len(row_data)
                 if num_cols <= 26:
@@ -780,9 +780,10 @@ def update_google_sheet_index(data):
                     second_letter = chr(65 + (num_cols - 1) % 26)
                     end_col_letter = first_letter + second_letter
 
-                range_name = f'A{next_row}:{end_col_letter}{next_row}'
+                range_name = f'A{next_available_row}:{end_col_letter}{next_available_row}'
                 updates.append({'range': range_name, 'values': [row_data]})
-                index_map[first_col_value] = next_row
+                index_map[first_col_value] = next_available_row
+                next_available_row += 1  # Increment for next insert
 
         # Perform batch update (single API call for all updates)
         print(f"Performing batch update with {len(updates)} updates...")
