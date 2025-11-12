@@ -120,40 +120,51 @@ def scrape_sentiment_data():
             print(f"Current URL: {page.url}")
 
             # Step 4: Click on the tab
-            print("Clicking on tab #rc-tabs-1-tab-999...")
+            print("Clicking on tab ending with '-tab-999'...")
 
             # Try multiple methods to find and click the tab
             tab_clicked = False
 
-            # Method 1: XPath
+            # Method 1: Find any tab with ID ending in "-tab-999" (dynamic ID)
             try:
-                print("Method 1: Trying XPath selector...")
-                tab_xpath = '//*[@id="rc-tabs-1-tab-999"]'
-                tab_element = page.wait_for_selector(f'xpath={tab_xpath}', timeout=5000, state='attached')
-                if tab_element:
-                    # Scroll to element and wait for it to be visible
-                    tab_element.scroll_into_view_if_needed()
-                    time.sleep(1)
-                    # Use JavaScript click to avoid interception issues
-                    page.evaluate('(element) => element.click()', tab_element)
-                    print("✓ Tab clicked successfully with XPath")
-                    tab_clicked = True
-                    time.sleep(3)
-                    page.screenshot(path="step4_tab_clicked.png")
+                print("Method 1: Trying to find tab with ID ending in '-tab-999'...")
+                # Try different tab indices (0-10)
+                for i in range(11):
+                    tab_id = f'rc-tabs-{i}-tab-999'
+                    print(f"  Trying: {tab_id}")
+                    result = page.evaluate(f"""
+                        (function() {{
+                            var tab = document.getElementById('{tab_id}');
+                            if (tab) {{
+                                tab.click();
+                                return true;
+                            }}
+                            return false;
+                        }})()
+                    """)
+                    if result:
+                        print(f"✓ Tab clicked successfully: {tab_id}")
+                        tab_clicked = True
+                        time.sleep(3)
+                        page.screenshot(path="step4_tab_clicked.png")
+                        break
             except Exception as e:
                 print(f"Method 1 failed: {e}")
 
-            # Method 2: CSS ID selector with JavaScript
+            # Method 2: CSS attribute selector [id$="-tab-999"]
             if not tab_clicked:
                 try:
-                    print("Method 2: Trying CSS selector with JavaScript click...")
-                    page.evaluate("document.getElementById('rc-tabs-1-tab-999')?.click()")
-                    time.sleep(2)
-                    # Check if it worked by looking for any table
-                    tables = page.query_selector_all('table')
-                    if tables:
-                        print("✓ Tab clicked successfully with JavaScript")
+                    print("Method 2: Trying CSS attribute selector [id$='-tab-999']...")
+                    tab_element = page.query_selector('[id$="-tab-999"]')
+                    if tab_element:
+                        tab_id = tab_element.get_attribute('id')
+                        print(f"  Found tab: {tab_id}")
+                        tab_element.scroll_into_view_if_needed()
+                        time.sleep(1)
+                        page.evaluate('(element) => element.click()', tab_element)
+                        print("✓ Tab clicked successfully with CSS selector")
                         tab_clicked = True
+                        time.sleep(3)
                         page.screenshot(path="step4_tab_clicked.png")
                 except Exception as e:
                     print(f"Method 2 failed: {e}")
@@ -166,7 +177,8 @@ def scrape_sentiment_data():
                     print(f"Found {len(all_tabs)} tabs")
                     for i, tab in enumerate(all_tabs):
                         tab_text = tab.inner_text().strip()
-                        print(f"  Tab {i+1}: '{tab_text}'")
+                        tab_id = tab.get_attribute('id') or 'no-id'
+                        print(f"  Tab {i+1}: '{tab_text}' (id: {tab_id})")
                         # Look for "999" or "Tümü" or "Hepsi" or last numeric tab
                         if '999' in tab_text or 'Tümü' in tab_text or 'Hepsi' in tab_text or 'All' in tab_text.lower():
                             print(f"Found matching tab: '{tab_text}'")
