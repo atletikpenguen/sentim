@@ -69,8 +69,10 @@ def scrape_sentiment_data():
         try:
             # Step 1: Navigate to login page
             print("Navigating to login page...")
-            page.goto(LOGIN_URL, wait_until='networkidle', timeout=60000)
+            page.goto(LOGIN_URL, wait_until='domcontentloaded', timeout=30000)
             time.sleep(2)
+            page.screenshot(path="step1_login_page.png")
+            print(f"Current URL: {page.url}")
 
             # Step 2: Fill login form
             print("Filling login form...")
@@ -79,36 +81,64 @@ def scrape_sentiment_data():
             email_input = page.query_selector('input[type="email"], input[name="email"], input[id="email"]')
             if email_input:
                 email_input.fill(EMAIL)
+                print("Email filled")
 
             # Find password input and fill it
             password_input = page.query_selector('input[type="password"], input[name="password"], input[id="password"]')
             if password_input:
                 password_input.fill(PASSWORD)
+                print("Password filled")
 
             # Find and click submit button
             time.sleep(1)
             submit_button = page.query_selector('button[type="submit"], button:has-text("Giriş"), button:has-text("Login")')
             if submit_button:
+                print("Clicking submit button...")
                 submit_button.click()
             else:
-                # Try submitting the form
+                print("Submit button not found, pressing Enter...")
                 page.keyboard.press("Enter")
 
             # Wait for navigation after login
             print("Waiting for login...")
-            time.sleep(5)
+            time.sleep(8)
+            page.screenshot(path="step2_after_login.png")
+            print(f"Current URL after login: {page.url}")
+
+            # Check if login was successful
+            if "signin" in page.url.lower():
+                print("ERROR: Still on login page! Login may have failed.")
+                page.screenshot(path="login_failed.png")
+                browser.close()
+                return None
 
             # Step 3: Navigate to target page
             print(f"Navigating to target page: {TARGET_URL}")
-            page.goto(TARGET_URL, wait_until='networkidle', timeout=60000)
-            time.sleep(3)
+            page.goto(TARGET_URL, wait_until='domcontentloaded', timeout=30000)
+            time.sleep(5)
+            page.screenshot(path="step3_target_page.png")
+            print(f"Current URL: {page.url}")
 
             # Step 4: Click on the tab
             print("Clicking on tab #rc-tabs-1-tab-999...")
             tab_selector = '#rc-tabs-1-tab-999'
-            page.wait_for_selector(tab_selector, timeout=10000)
-            page.click(tab_selector)
-            time.sleep(3)
+            try:
+                page.wait_for_selector(tab_selector, timeout=15000)
+                page.click(tab_selector)
+                print("Tab clicked successfully")
+                time.sleep(3)
+                page.screenshot(path="step4_tab_clicked.png")
+            except PlaywrightTimeout:
+                print(f"Warning: Tab selector '{tab_selector}' not found, trying alternative methods...")
+                # Try to find any tab with text containing numbers
+                all_tabs = page.query_selector_all('[role="tab"]')
+                print(f"Found {len(all_tabs)} tabs")
+                if all_tabs:
+                    # Click the last tab (usually the one with all data)
+                    all_tabs[-1].click()
+                    print("Clicked last tab as fallback")
+                    time.sleep(3)
+                    page.screenshot(path="step4_tab_fallback.png")
 
             # Step 5: Get last update time
             print("Checking last update time...")
@@ -137,14 +167,26 @@ def scrape_sentiment_data():
             # Step 6: Scrape table data
             table_selector = '#root > section > section > main > div.gx-main-content-wrapper > div.gx-main-content > div.ant-card.ant-card-bordered.gx-card-full > div > div.step-lines-tables'
 
-            page.wait_for_selector(table_selector, timeout=10000)
-            time.sleep(2)
+            print("Waiting for table data...")
+            try:
+                page.wait_for_selector(table_selector, timeout=15000)
+                time.sleep(3)
+                page.screenshot(path="step5_table_ready.png")
+            except PlaywrightTimeout:
+                print(f"Warning: Table selector '{table_selector}' not found, trying to find any table...")
+                page.screenshot(path="step5_no_table.png")
 
             # Get all tables within the container
             tables = page.query_selector_all(f'{table_selector} table')
 
+            # If no tables found with specific selector, try generic selector
             if not tables:
-                print("No tables found!")
+                print("Trying generic table selector...")
+                tables = page.query_selector_all('table')
+
+            if not tables:
+                print("ERROR: No tables found on the page!")
+                page.screenshot(path="error_no_tables.png")
                 browser.close()
                 return None
 
