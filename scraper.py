@@ -233,6 +233,36 @@ def scrape_sentiment_data():
             try:
                 page.wait_for_selector(table_selector, timeout=15000)
                 time.sleep(3)
+
+                # Scroll page down to load more rows
+                print("Scrolling page to load all data...")
+                for scroll_i in range(10):
+                    page.evaluate('window.scrollTo(0, document.body.scrollHeight)')
+                    time.sleep(0.5)
+
+                # Try to find and click "Show More" or "Load More" buttons
+                try:
+                    show_more_selectors = [
+                        'button:has-text("Daha Fazla")',
+                        'button:has-text("Show More")',
+                        'button:has-text("Load More")',
+                        'button:has-text("Tümünü Göster")',
+                        '.load-more',
+                        '.show-more'
+                    ]
+                    for selector in show_more_selectors:
+                        buttons = page.query_selector_all(selector)
+                        for button in buttons:
+                            try:
+                                if button.is_visible():
+                                    print(f"Found and clicking: {selector}")
+                                    button.click()
+                                    time.sleep(2)
+                            except:
+                                pass
+                except:
+                    pass
+
                 page.screenshot(path="step5_table_ready.png")
             except PlaywrightTimeout:
                 print(f"Warning: Table selector '{table_selector}' not found, trying to find any table...")
@@ -392,23 +422,35 @@ def update_google_sheet(data):
 
         # Use batch update for better performance and compatibility
         write_success = False
+
+        # Always use update() with explicit range to avoid column offset issues
         try:
-            # Method 1: Try using values().append() API
-            print("Method 1: Using values().append() API...")
-            worksheet.append_rows(rows_to_add, value_input_option='RAW')
+            # Method 1: Try using update() with range (most reliable)
+            print("Method 1: Using update() with explicit range...")
+            end_row = start_row + len(rows_to_add) - 1
+
+            # Calculate column letter (handle columns beyond Z)
+            num_cols = len(rows_to_add[0])
+            if num_cols <= 26:
+                end_col_letter = chr(64 + num_cols)  # A=65, so 64+1=A
+            else:
+                # For columns beyond Z (AA, AB, etc.)
+                first_letter = chr(64 + (num_cols - 1) // 26)
+                second_letter = chr(65 + (num_cols - 1) % 26)
+                end_col_letter = first_letter + second_letter
+
+            range_name = f'A{start_row}:{end_col_letter}{end_row}'
+            print(f"Updating range: {range_name} ({len(rows_to_add)} rows, {num_cols} columns)")
+            worksheet.update(range_name, rows_to_add, value_input_option='RAW')
             print(f"✓ Successfully added {len(data['data'])} rows to Google Sheet")
             write_success = True
         except Exception as e1:
             print(f"Method 1 failed: {e1}")
 
             try:
-                # Method 2: Try using update() with range
-                print("Method 2: Using update() with range...")
-                end_row = start_row + len(rows_to_add) - 1
-                end_col_letter = chr(65 + len(rows_to_add[0]) - 1)  # Convert to letter (A, B, C, etc.)
-                range_name = f'A{start_row}:{end_col_letter}{end_row}'
-                print(f"Updating range: {range_name}")
-                worksheet.update(range_name, rows_to_add, value_input_option='RAW')
+                # Method 2: Try using append_rows as fallback
+                print("Method 2: Using values().append() API...")
+                worksheet.append_rows(rows_to_add, value_input_option='RAW', table_range='A1')
                 print(f"✓ Successfully added {len(data['data'])} rows to Google Sheet")
                 write_success = True
             except Exception as e2:
