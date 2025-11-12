@@ -121,24 +121,86 @@ def scrape_sentiment_data():
 
             # Step 4: Click on the tab
             print("Clicking on tab #rc-tabs-1-tab-999...")
-            tab_selector = '#rc-tabs-1-tab-999'
+
+            # Try multiple methods to find and click the tab
+            tab_clicked = False
+
+            # Method 1: XPath
             try:
-                page.wait_for_selector(tab_selector, timeout=15000)
-                page.click(tab_selector)
-                print("Tab clicked successfully")
-                time.sleep(3)
-                page.screenshot(path="step4_tab_clicked.png")
-            except PlaywrightTimeout:
-                print(f"Warning: Tab selector '{tab_selector}' not found, trying alternative methods...")
-                # Try to find any tab with text containing numbers
-                all_tabs = page.query_selector_all('[role="tab"]')
-                print(f"Found {len(all_tabs)} tabs")
-                if all_tabs:
-                    # Click the last tab (usually the one with all data)
-                    all_tabs[-1].click()
-                    print("Clicked last tab as fallback")
+                print("Method 1: Trying XPath selector...")
+                tab_xpath = '//*[@id="rc-tabs-1-tab-999"]'
+                tab_element = page.wait_for_selector(f'xpath={tab_xpath}', timeout=5000, state='attached')
+                if tab_element:
+                    # Scroll to element and wait for it to be visible
+                    tab_element.scroll_into_view_if_needed()
+                    time.sleep(1)
+                    # Use JavaScript click to avoid interception issues
+                    page.evaluate('(element) => element.click()', tab_element)
+                    print("✓ Tab clicked successfully with XPath")
+                    tab_clicked = True
                     time.sleep(3)
-                    page.screenshot(path="step4_tab_fallback.png")
+                    page.screenshot(path="step4_tab_clicked.png")
+            except Exception as e:
+                print(f"Method 1 failed: {e}")
+
+            # Method 2: CSS ID selector with JavaScript
+            if not tab_clicked:
+                try:
+                    print("Method 2: Trying CSS selector with JavaScript click...")
+                    page.evaluate("document.getElementById('rc-tabs-1-tab-999')?.click()")
+                    time.sleep(2)
+                    # Check if it worked by looking for any table
+                    tables = page.query_selector_all('table')
+                    if tables:
+                        print("✓ Tab clicked successfully with JavaScript")
+                        tab_clicked = True
+                        page.screenshot(path="step4_tab_clicked.png")
+                except Exception as e:
+                    print(f"Method 2 failed: {e}")
+
+            # Method 3: Find tab by text containing "999" or "Tümü" (All)
+            if not tab_clicked:
+                try:
+                    print("Method 3: Trying to find tab by text...")
+                    all_tabs = page.query_selector_all('[role="tab"]')
+                    print(f"Found {len(all_tabs)} tabs")
+                    for i, tab in enumerate(all_tabs):
+                        tab_text = tab.inner_text().strip()
+                        print(f"  Tab {i+1}: '{tab_text}'")
+                        # Look for "999" or "Tümü" or "Hepsi" or last numeric tab
+                        if '999' in tab_text or 'Tümü' in tab_text or 'Hepsi' in tab_text or 'All' in tab_text.lower():
+                            print(f"Found matching tab: '{tab_text}'")
+                            tab.scroll_into_view_if_needed()
+                            time.sleep(1)
+                            page.evaluate('(element) => element.click()', tab)
+                            print("✓ Tab clicked successfully by text match")
+                            tab_clicked = True
+                            time.sleep(3)
+                            page.screenshot(path="step4_tab_clicked.png")
+                            break
+                except Exception as e:
+                    print(f"Method 3 failed: {e}")
+
+            # Method 4: Click the last tab as final fallback
+            if not tab_clicked:
+                try:
+                    print("Method 4: Clicking last tab as fallback...")
+                    all_tabs = page.query_selector_all('[role="tab"]')
+                    if all_tabs:
+                        last_tab = all_tabs[-1]
+                        last_tab.scroll_into_view_if_needed()
+                        time.sleep(1)
+                        page.evaluate('(element) => element.click()', last_tab)
+                        print("✓ Clicked last tab as fallback")
+                        tab_clicked = True
+                        time.sleep(3)
+                        page.screenshot(path="step4_tab_fallback.png")
+                except Exception as e:
+                    print(f"Method 4 failed: {e}")
+
+            if not tab_clicked:
+                print("⚠️  WARNING: Could not click any tab, proceeding anyway...")
+                page.screenshot(path="step4_no_tab_clicked.png")
 
             # Step 5: Get last update time
             print("Checking last update time...")
