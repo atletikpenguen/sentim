@@ -129,7 +129,7 @@ def scrape_sentiment_data():
             # Validate that the correct tab was clicked by checking for table
             try:
                 print("Method 1: Trying to find tab with ID ending in '-tab-999'...")
-                table_selector = '#root > section > section > main > div.gx-main-content-wrapper > div.gx-main-content > div.ant-card.ant-card-bordered.gx-card-full > div > div.step-lines-tables'
+                table_selector = '.step-lines-tables'
 
                 # Try different tab indices (0-10)
                 for i in range(11):
@@ -146,13 +146,13 @@ def scrape_sentiment_data():
                         }})()
                     """)
                     if result:
-                        time.sleep(2)
+                        time.sleep(3)  # Wait longer for table to load
                         # Check if the correct table appeared
                         table_check = page.query_selector(table_selector)
                         if table_check:
                             print(f"✓ Tab clicked successfully: {tab_id} (table found)")
                             tab_clicked = True
-                            time.sleep(3)
+                            time.sleep(2)
                             page.screenshot(path="step4_tab_clicked.png")
                             break
                         else:
@@ -248,7 +248,7 @@ def scrape_sentiment_data():
                 current_update = f"Unknown - {datetime.now().strftime('%d.%m.%Y %H:%M')}"
 
             # Step 6: Scrape table data
-            table_selector = '#root > section > section > main > div.gx-main-content-wrapper > div.gx-main-content > div.ant-card.ant-card-bordered.gx-card-full > div > div.step-lines-tables'
+            table_selector = '.step-lines-tables'
 
             print("Waiting for table data...")
             try:
