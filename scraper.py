@@ -382,6 +382,8 @@ def scrape_index_data(page):
 
         # Try multiple selectors for Pano tab
         pano_selectors = [
+            '.chart-menu-buttons button:has-text("Pano")',
+            '.chart-menu-buttons:has-text("Pano")',
             '[role="tab"]:has-text("Pano")',
             'button:has-text("Pano")',
             '.ant-tabs-tab:has-text("Pano")',
