@@ -126,8 +126,11 @@ def scrape_sentiment_data():
             tab_clicked = False
 
             # Method 1: Find any tab with ID ending in "-tab-999" (dynamic ID)
+            # Validate that the correct tab was clicked by checking for table
             try:
                 print("Method 1: Trying to find tab with ID ending in '-tab-999'...")
+                table_selector = '#root > section > section > main > div.gx-main-content-wrapper > div.gx-main-content > div.ant-card.ant-card-bordered.gx-card-full > div > div.step-lines-tables'
+
                 # Try different tab indices (0-10)
                 for i in range(11):
                     tab_id = f'rc-tabs-{i}-tab-999'
@@ -143,11 +146,17 @@ def scrape_sentiment_data():
                         }})()
                     """)
                     if result:
-                        print(f"✓ Tab clicked successfully: {tab_id}")
-                        tab_clicked = True
-                        time.sleep(3)
-                        page.screenshot(path="step4_tab_clicked.png")
-                        break
+                        time.sleep(2)
+                        # Check if the correct table appeared
+                        table_check = page.query_selector(table_selector)
+                        if table_check:
+                            print(f"✓ Tab clicked successfully: {tab_id} (table found)")
+                            tab_clicked = True
+                            time.sleep(3)
+                            page.screenshot(path="step4_tab_clicked.png")
+                            break
+                        else:
+                            print(f"  Tab {tab_id} clicked but no table found, trying next...")
             except Exception as e:
                 print(f"Method 1 failed: {e}")
 
