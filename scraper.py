@@ -287,10 +287,8 @@ def scrape_sentiment_data():
             # Close browser
             browser.close()
 
-            # Save the current update value
-            save_last_update(current_update)
-
             # Return data with headers
+            # NOTE: Do NOT save last_update here! Only save after successful Google Sheets write
             return {
                 'update_time': current_update,
                 'data': all_data,
@@ -431,12 +429,15 @@ def main():
         success = update_google_sheet(result)
 
         if success:
+            # Only save last update if Google Sheets write was successful
+            save_last_update(result['update_time'])
             print("\n" + "=" * 50)
             print("SUCCESS: Data updated successfully!")
             print("=" * 50)
         else:
             print("\n" + "=" * 50)
             print("FAILED: Could not update Google Sheet")
+            print("⚠️  last_update.txt NOT updated - will retry next time")
             print("=" * 50)
 
     except Exception as e:
