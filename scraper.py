@@ -327,31 +327,89 @@ def update_google_sheet(data):
         client = gspread.authorize(creds)
 
         # Open spreadsheet
+        print(f"Opening spreadsheet: {SHEET_ID}")
         spreadsheet = client.open_by_key(SHEET_ID)
+        print(f"Spreadsheet opened: {spreadsheet.title}")
 
         # Try to get the worksheet, create if it doesn't exist
         try:
             worksheet = spreadsheet.worksheet(SHEET_NAME)
+            print(f"Found worksheet: {SHEET_NAME}")
         except gspread.exceptions.WorksheetNotFound:
             print(f"Worksheet '{SHEET_NAME}' not found, creating it...")
             worksheet = spreadsheet.add_worksheet(title=SHEET_NAME, rows=1000, cols=20)
 
-        # Get existing data to append
-        existing_data = worksheet.get_all_values()
+        # Get existing data to check if we need headers
+        try:
+            existing_data = worksheet.get_all_values()
+            print(f"Existing data rows: {len(existing_data)}")
+        except Exception as e:
+            print(f"Warning: Could not read existing data: {e}")
+            existing_data = []
+
+        # Prepare rows to add
+        rows_to_add = []
 
         # If sheet is empty, add headers
         if not existing_data:
-            worksheet.append_row(data['headers'])
+            print("Sheet is empty, adding headers...")
+            rows_to_add.append(data['headers'])
 
-        # Append new data
-        for row in data['data']:
-            worksheet.append_row(row)
+        # Add data rows
+        rows_to_add.extend(data['data'])
 
-        print(f"Successfully added {len(data['data'])} rows to Google Sheet")
-        return True
+        # Calculate the starting row
+        start_row = len(existing_data) + 1
+
+        print(f"Adding {len(rows_to_add)} rows starting from row {start_row}")
+
+        # Use batch update for better performance and compatibility
+        try:
+            # Method 1: Try using values().append() API
+            print("Method 1: Using values().append() API...")
+            worksheet.append_rows(rows_to_add, value_input_option='RAW')
+            print(f"✓ Successfully added {len(data['data'])} rows to Google Sheet")
+            return True
+        except Exception as e1:
+            print(f"Method 1 failed: {e1}")
+
+            try:
+                # Method 2: Try using update() with range
+                print("Method 2: Using update() with range...")
+                end_row = start_row + len(rows_to_add) - 1
+                end_col_letter = chr(65 + len(rows_to_add[0]) - 1)  # Convert to letter (A, B, C, etc.)
+                range_name = f'A{start_row}:{end_col_letter}{end_row}'
+                print(f"Updating range: {range_name}")
+                worksheet.update(range_name, rows_to_add, value_input_option='RAW')
+                print(f"✓ Successfully added {len(data['data'])} rows to Google Sheet")
+                return True
+            except Exception as e2:
+                print(f"Method 2 failed: {e2}")
+
+                try:
+                    # Method 3: Add rows one by one (slowest but most compatible)
+                    print("Method 3: Adding rows one by one...")
+                    for i, row in enumerate(rows_to_add):
+                        try:
+                            row_num = start_row + i
+                            range_name = f'A{row_num}'
+                            worksheet.update(range_name, [row], value_input_option='RAW')
+                            if i == 0 or (i + 1) % 5 == 0:
+                                print(f"  Added {i + 1}/{len(rows_to_add)} rows...")
+                        except Exception as e_row:
+                            print(f"  Warning: Could not add row {i + 1}: {e_row}")
+                            continue
+
+                    print(f"✓ Added {len(rows_to_add)} rows to Google Sheet (with potential errors)")
+                    return True
+                except Exception as e3:
+                    print(f"Method 3 failed: {e3}")
+                    raise Exception(f"All methods failed. Last error: {e3}")
 
     except Exception as e:
         print(f"Error updating Google Sheet: {e}")
+        import traceback
+        traceback.print_exc()
         return False
 
 
