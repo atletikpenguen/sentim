@@ -380,38 +380,63 @@ def scrape_index_data(page):
         print("Looking for 'Pano' tab...")
         pano_clicked = False
 
-        # Try multiple selectors for Pano tab
-        pano_selectors = [
-            '.chart-menu-buttons button:has-text("Pano")',
-            '.chart-menu-buttons:has-text("Pano")',
-            '[role="tab"]:has-text("Pano")',
-            'button:has-text("Pano")',
-            '.ant-tabs-tab:has-text("Pano")',
-        ]
+        # Wait for page to fully load before looking for Pano tab
+        print("Waiting for page to fully load...")
+        time.sleep(5)
 
-        for selector in pano_selectors:
-            try:
-                pano_tab = page.query_selector(selector)
-                if pano_tab and pano_tab.is_visible():
-                    print(f"Found Pano tab with: {selector}")
-                    pano_tab.click()
-                    pano_clicked = True
-                    time.sleep(3)
-                    break
-            except Exception as e:
-                print(f"Selector {selector} failed: {e}")
+        # Try multiple times with delays (for cron timing issues)
+        max_attempts = 3
+        for attempt in range(max_attempts):
+            print(f"Attempt {attempt + 1}/{max_attempts} to find Pano tab...")
 
-        if not pano_clicked:
+            # Try multiple selectors for Pano tab
+            pano_selectors = [
+                '.chart-menu-buttons button:has-text("Pano")',
+                '.chart-menu-buttons:has-text("Pano")',
+                '[role="tab"]:has-text("Pano")',
+                'button:has-text("Pano")',
+                '.ant-tabs-tab:has-text("Pano")',
+            ]
+
+            for selector in pano_selectors:
+                try:
+                    pano_tab = page.query_selector(selector)
+                    if pano_tab and pano_tab.is_visible():
+                        print(f"Found Pano tab with: {selector}")
+                        pano_tab.click()
+                        pano_clicked = True
+                        time.sleep(3)
+                        break
+                except Exception as e:
+                    print(f"Selector {selector} failed: {e}")
+
+            if pano_clicked:
+                break
+
             # Try finding by text in all tabs
-            all_tabs = page.query_selector_all('[role="tab"]')
-            for tab in all_tabs:
-                tab_text = tab.inner_text().strip()
-                if 'Pano' in tab_text or 'pano' in tab_text.lower():
-                    print(f"Found Pano tab by text: {tab_text}")
-                    tab.click()
-                    pano_clicked = True
-                    time.sleep(3)
-                    break
+            if not pano_clicked:
+                try:
+                    all_tabs = page.query_selector_all('[role="tab"]')
+                    print(f"Found {len(all_tabs)} tabs total")
+                    for tab in all_tabs:
+                        tab_text = tab.inner_text().strip()
+                        print(f"Tab text: '{tab_text}'")
+                        if 'Pano' in tab_text or 'pano' in tab_text.lower():
+                            print(f"Found Pano tab by text: {tab_text}")
+                            tab.click()
+                            pano_clicked = True
+                            time.sleep(3)
+                            break
+                except Exception as e:
+                    print(f"Error searching tabs by text: {e}")
+
+            if pano_clicked:
+                break
+
+            # Wait before next attempt
+            if attempt < max_attempts - 1:
+                print(f"Pano tab not found, waiting 5 seconds before retry...")
+                time.sleep(5)
 
         if not pano_clicked:
             print("ERROR: Could not find Pano tab!")
