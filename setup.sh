@@ -9,25 +9,27 @@ echo "========================================="
 echo ""
 
 # Check if running as root
+SUDO=""
 if [ "$EUID" -eq 0 ]; then
-    echo "Bu scripti root kullanıcısı olarak çalıştırmayın."
-    echo "Lütfen normal kullanıcı olarak çalıştırın."
-    exit 1
+    echo "⚠️  Root kullanıcısı olarak çalıştırılıyor."
+    echo ""
+else
+    SUDO="sudo"
 fi
 
 # Update system
 echo "1. Sistem güncellemeleri yapılıyor..."
-sudo apt update && sudo apt upgrade -y
+$SUDO apt update && $SUDO apt upgrade -y
 
 # Install Python and pip
 echo ""
 echo "2. Python ve pip kuruluyor..."
-sudo apt install -y python3 python3-pip python3-venv
+$SUDO apt install -y python3 python3-pip python3-venv
 
 # Install system dependencies for Playwright
 echo ""
 echo "3. Playwright sistem bağımlılıkları kuruluyor..."
-sudo apt install -y \
+$SUDO apt install -y \
     libnss3 \
     libnspr4 \
     libatk1.0-0 \
@@ -66,7 +68,7 @@ pip install -r requirements.txt
 echo ""
 echo "7. Playwright browser'ları kuruluyor..."
 playwright install chromium
-sudo playwright install-deps chromium
+$SUDO playwright install-deps chromium
 
 # Create .env file if it doesn't exist
 if [ ! -f .env ]; then
