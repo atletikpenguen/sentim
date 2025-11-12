@@ -765,11 +765,11 @@ def update_google_sheet_index(data):
                     end_col_letter = first_letter + second_letter
 
                 range_name = f'A{row_num}:{end_col_letter}{row_num}'
-                updates.append((range_name, [row_data]))
+                updates.append({'range': range_name, 'values': [row_data]})
 
             else:
                 # INSERT new row at the end
-                next_row = len(existing_data) + 1 + len([u for u in updates if 'A' + str(len(existing_data) + 1) in u[0]])
+                next_row = len(existing_data) + 1 + len([u for u in updates if 'A' + str(len(existing_data) + 1) in u['range']])
                 print(f"Inserting new row {next_row}: {first_col_value}")
 
                 num_cols = len(row_data)
@@ -781,18 +781,22 @@ def update_google_sheet_index(data):
                     end_col_letter = first_letter + second_letter
 
                 range_name = f'A{next_row}:{end_col_letter}{next_row}'
-                updates.append((range_name, [row_data]))
+                updates.append({'range': range_name, 'values': [row_data]})
                 index_map[first_col_value] = next_row
 
-        # Perform batch update
-        print(f"Performing {len(updates)} updates...")
-        for range_name, values in updates:
+        # Perform batch update (single API call for all updates)
+        print(f"Performing batch update with {len(updates)} updates...")
+        if updates:
             try:
-                worksheet.update(range_name, values, value_input_option='RAW')
+                worksheet.batch_update(updates, value_input_option='RAW')
+                print(f"✓ Successfully updated {len(updates)} rows in Sayfa2")
             except Exception as e:
-                print(f"Warning: Could not update {range_name}: {e}")
-
-        print(f"✓ Successfully updated {len(updates)} rows in Sayfa2")
+                print(f"Error during batch update: {e}")
+                import traceback
+                traceback.print_exc()
+                return False
+        else:
+            print("No updates needed")
         return True
 
     except Exception as e:
