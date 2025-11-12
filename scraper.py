@@ -799,72 +799,310 @@ def main():
     print("Sentimentalgo Scraper")
     print("=" * 50)
 
-    browser = None
     try:
-        # Scrape stock data
-        result = scrape_sentiment_data()
+        # Use a single Playwright context for both scrapers
+        with sync_playwright() as p:
+            # Launch browser once for both scrapers
+            browser = p.chromium.launch(headless=True)
+            context = browser.new_context(
+                viewport={'width': 1920, 'height': 1080},
+                user_agent='Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36'
+            )
+            page = context.new_page()
 
-        if result is None:
-            print("No new data to update.")
-            return
+            try:
+                # Login first
+                print("Logging in...")
+                page.goto(LOGIN_URL, wait_until='domcontentloaded', timeout=30000)
+                time.sleep(2)
+                page.screenshot(path="step1_login_page.png")
 
-        # Unpack result (browser, page, data)
-        browser, page, stock_data = result
+                # Fill login form
+                page.wait_for_selector('input[type="email"], input[name="email"], input[id="email"]', timeout=10000)
+                email_input = page.query_selector('input[type="email"], input[name="email"], input[id="email"]')
+                if email_input:
+                    email_input.fill(EMAIL)
+                    print("Email filled")
 
-        # Update Google Sheet with stock data
-        print("\n--- Updating Stock Data (Sayfa1) ---")
-        success_stock = update_google_sheet(stock_data)
+                password_input = page.query_selector('input[type="password"], input[name="password"], input[id="password"]')
+                if password_input:
+                    password_input.fill(PASSWORD)
+                    print("Password filled")
 
-        if success_stock:
-            # Only save last update if Google Sheets write was successful
-            save_last_update(stock_data['update_time'])
-            print("✓ Stock data updated successfully!")
-        else:
-            print("✗ Failed to update stock data")
-            print("⚠️  last_update.txt NOT updated - will retry next time")
+                time.sleep(1)
+                submit_button = page.query_selector('button[type="submit"], button:has-text("Giriş"), button:has-text("Login")')
+                if submit_button:
+                    print("Clicking submit button...")
+                    submit_button.click()
+                else:
+                    print("Submit button not found, pressing Enter...")
+                    page.keyboard.press("Enter")
 
-        # Scrape index data (using the same browser/page)
-        print("\n--- Scraping Index Data ---")
-        index_data = scrape_index_data(page)
+                # Wait for login
+                print("Waiting for login...")
+                time.sleep(8)
+                page.screenshot(path="step2_after_login.png")
+                print(f"Current URL after login: {page.url}")
 
-        if index_data:
-            # Update Google Sheet with index data
-            print("\n--- Updating Index Data (Sayfa2) ---")
-            success_index = update_google_sheet_index(index_data)
+                # Check if login was successful
+                if "signin" in page.url.lower():
+                    print("ERROR: Still on login page! Login may have failed.")
+                    page.screenshot(path="login_failed.png")
+                    browser.close()
+                    return
 
-            if success_index:
-                print("✓ Index data updated successfully!")
-            else:
-                print("✗ Failed to update index data")
-        else:
-            print("✗ Failed to scrape index data")
+                # Scrape stock data (pass the logged-in page)
+                print("\n--- Scraping Stock Data ---")
+                stock_data = scrape_sentiment_data_with_page(page)
 
-        # Close browser
-        if browser:
-            browser.close()
-            print("\n✓ Browser closed")
+                if stock_data:
+                    # Update Google Sheet with stock data
+                    print("\n--- Updating Stock Data (Sayfa1) ---")
+                    success_stock = update_google_sheet(stock_data)
 
-        # Print final summary
-        print("\n" + "=" * 50)
-        if success_stock and (not index_data or success_index):
-            print("SUCCESS: All data updated successfully!")
-        elif success_stock:
-            print("PARTIAL SUCCESS: Stock data updated, but index data failed")
-        else:
-            print("FAILED: Could not update data")
-        print("=" * 50)
+                    if success_stock:
+                        save_last_update(stock_data['update_time'])
+                        print("✓ Stock data updated successfully!")
+                    else:
+                        print("✗ Failed to update stock data")
+                        print("⚠️  last_update.txt NOT updated - will retry next time")
+                else:
+                    print("✗ Failed to scrape stock data")
+                    success_stock = False
+
+                # Scrape index data (using the same page)
+                print("\n--- Scraping Index Data ---")
+                index_data = scrape_index_data(page)
+
+                if index_data:
+                    # Update Google Sheet with index data
+                    print("\n--- Updating Index Data (Sayfa2) ---")
+                    success_index = update_google_sheet_index(index_data)
+
+                    if success_index:
+                        print("✓ Index data updated successfully!")
+                    else:
+                        print("✗ Failed to update index data")
+                else:
+                    print("✗ Failed to scrape index data")
+                    success_index = False
+
+                # Close browser
+                browser.close()
+                print("\n✓ Browser closed")
+
+                # Print final summary
+                print("\n" + "=" * 50)
+                if success_stock and success_index:
+                    print("SUCCESS: All data updated successfully!")
+                elif success_stock:
+                    print("PARTIAL SUCCESS: Stock data updated, but index data failed")
+                else:
+                    print("FAILED: Could not update data")
+                print("=" * 50)
+
+            except Exception as e:
+                print(f"Error during scraping: {e}")
+                import traceback
+                traceback.print_exc()
+                try:
+                    browser.close()
+                except:
+                    pass
 
     except Exception as e:
         print(f"\nFATAL ERROR: {e}")
         import traceback
         traceback.print_exc()
 
-        # Try to close browser if still open
-        if browser:
+
+def scrape_sentiment_data_with_page(page):
+    """Scrape stock data using an already logged-in page"""
+    try:
+        # Navigate to target page
+        print(f"Navigating to target page: {TARGET_URL}")
+        page.goto(TARGET_URL, wait_until='domcontentloaded', timeout=30000)
+        time.sleep(5)
+        page.screenshot(path="step3_target_page.png")
+        print(f"Current URL: {page.url}")
+
+        # Close any popups
+        print("Checking for popups to close...")
+        try:
+            popup_close_selectors = [
+                'button.ant-modal-close',
+                '.ant-modal-close-x',
+                'button:has-text("Kapat")',
+                'button:has-text("Close")',
+                'button:has-text("×")',
+                '[aria-label="Close"]'
+            ]
+            for selector in popup_close_selectors:
+                try:
+                    close_buttons = page.query_selector_all(selector)
+                    for button in close_buttons:
+                        if button.is_visible():
+                            print(f"Closing popup with: {selector}")
+                            button.click()
+                            time.sleep(1)
+                except:
+                    pass
+        except Exception as e:
+            print(f"Popup close attempt: {e}")
+
+        print("Table is directly on the page, no tab clicking needed")
+        time.sleep(2)
+
+        # Get last update time
+        print("Checking last update time...")
+        update_selector = '#root > section > section > main > div.gx-main-content-wrapper > div.gx-main-content > div.ant-card.ant-card-bordered.gx-card-full > div > div.ant-row > div.ant-col.ant-col-xs-8.ant-col-sm-8.ant-col-md-8.ant-col-lg-8 > div'
+
+        try:
+            update_element = page.wait_for_selector(update_selector, timeout=10000)
+            current_update = update_element.inner_text().strip()
+            print(f"Current update: {current_update}")
+
+            # Check if update has changed
+            last_update = get_last_update()
+            print(f"Last saved update: {last_update}")
+
+            if last_update and last_update == current_update:
+                print("No changes detected. Skipping update.")
+                return None
+
+            print("Change detected! Scraping table data...")
+
+        except PlaywrightTimeout:
+            print("Warning: Could not find update time element")
+            current_update = f"Unknown - {datetime.now().strftime('%d.%m.%Y %H:%M')}"
+
+        # Scrape table data
+        table_selector = '.step-lines-tables'
+
+        print("Waiting for table data...")
+        try:
+            page.wait_for_selector(table_selector, timeout=15000)
+            time.sleep(3)
+
+            # Scroll page down to load more rows
+            print("Scrolling page to load all data...")
+            for scroll_i in range(10):
+                page.evaluate('window.scrollTo(0, document.body.scrollHeight)')
+                time.sleep(0.5)
+
+            page.screenshot(path="step5_table_ready.png")
+        except PlaywrightTimeout:
+            print(f"Warning: Table selector '{table_selector}' not found, trying to find any table...")
+            page.screenshot(path="step5_no_table.png")
+
+        # Get all tables within the container
+        tables = page.query_selector_all(f'{table_selector} table')
+
+        # If no tables found with specific selector, try generic selector
+        if not tables:
+            print("Trying generic table selector...")
+            tables = page.query_selector_all('table')
+
+        if not tables:
+            print("ERROR: No tables found on the page!")
+            page.screenshot(path="error_no_tables.png")
+            return None
+
+        print(f"Found {len(tables)} table(s)")
+
+        # Extract data from tables WITH PAGINATION
+        all_data = []
+
+        # Get headers from first table
+        headers = []
+        if tables:
+            header_cells = tables[0].query_selector_all('thead th, thead td')
+            for cell in header_cells:
+                headers.append(cell.inner_text().strip())
+            print(f"Headers: {headers}")
+
+        # Process all pagination pages
+        current_page = 1
+        max_pages = 10
+
+        while current_page <= max_pages:
+            print(f"\n--- Processing page {current_page} ---")
+
+            time.sleep(2)
+
+            # Re-query tables on current page
+            tables = page.query_selector_all(f'{table_selector} table')
+            if not tables:
+                tables = page.query_selector_all('table')
+
+            if not tables:
+                print("No tables found on current page")
+                break
+
+            # Extract data from current page
+            table = tables[0]
+            rows = table.query_selector_all('tbody tr')
+            page_row_count = len(rows)
+            print(f"Found {page_row_count} rows on page {current_page}")
+
+            for row in rows:
+                cells = row.query_selector_all('td')
+                row_data = [cell.inner_text().strip() for cell in cells]
+
+                if row_data:
+                    row_with_meta = [datetime.now().strftime('%d.%m.%Y %H:%M'), current_update] + row_data
+                    all_data.append(row_with_meta)
+
+            # Take screenshot of current page
+            page.screenshot(path=f"page_{current_page}.png")
+
+            # Try to find and click "next page" button
+            print("Looking for next page button...")
+            next_button_found = False
+
             try:
-                browser.close()
-            except:
-                pass
+                next_selectors = [
+                    '.ant-pagination-next:not(.ant-pagination-disabled)',
+                    'li.ant-pagination-next:not(.ant-pagination-disabled) button',
+                    'button.ant-pagination-item-link[aria-label*="next"]',
+                    '[title="Next Page"]'
+                ]
+
+                for selector in next_selectors:
+                    next_button = page.query_selector(selector)
+                    if next_button and next_button.is_visible():
+                        is_disabled = next_button.evaluate('el => el.disabled || el.parentElement.classList.contains("ant-pagination-disabled")')
+                        if not is_disabled:
+                            print(f"Clicking next button: {selector}")
+                            next_button.click()
+                            next_button_found = True
+                            time.sleep(3)
+                            break
+            except Exception as e:
+                print(f"Error finding next button: {e}")
+
+            if not next_button_found:
+                print(f"No more pages found. Finished at page {current_page}")
+                break
+
+            current_page += 1
+
+        print(f"Extracted {len(all_data)} rows of data")
+        page.screenshot(path="screenshot.png")
+        print("Screenshot saved as screenshot.png")
+
+        return {
+            'update_time': current_update,
+            'data': all_data,
+            'headers': ['Tarih', 'Son Güncelleme'] + headers if headers else ['Tarih', 'Son Güncelleme']
+        }
+
+    except Exception as e:
+        print(f"Error during scraping: {e}")
+        page.screenshot(path="error_screenshot.png")
+        import traceback
+        traceback.print_exc()
+        return None
 
 
 if __name__ == "__main__":
