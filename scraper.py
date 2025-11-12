@@ -444,21 +444,28 @@ def scrape_index_data(page):
         headers.append('Son Çekilme Tarihi')
         print(f"Headers: {headers}")
 
-        # Get rows
-        rows = table.query_selector_all('tbody tr')
-        print(f"Found {len(rows)} rows")
-
-        all_data = []
+        # Extract all row data using evaluate to avoid memory issues with large tables
+        print("Extracting row data...")
         current_time = datetime.now().strftime('%d.%m.%Y %H:%M')
 
-        for row in rows:
-            cells = row.query_selector_all('td')
-            row_data = [cell.inner_text().strip() for cell in cells]
+        all_data = table.evaluate('''(table) => {
+            const rows = table.querySelectorAll('tbody tr');
+            const data = [];
+            rows.forEach(row => {
+                const cells = row.querySelectorAll('td');
+                const rowData = Array.from(cells).map(cell => cell.innerText.trim());
+                if (rowData.length > 0) {
+                    data.push(rowData);
+                }
+            });
+            return data;
+        }''')
 
-            if row_data:
-                # Add timestamp as last column
-                row_data.append(current_time)
-                all_data.append(row_data)
+        print(f"Found {len(all_data)} rows")
+
+        # Add timestamp to each row
+        for row_data in all_data:
+            row_data.append(current_time)
 
         print(f"Extracted {len(all_data)} rows of index data")
         page.screenshot(path="index_final.png")
