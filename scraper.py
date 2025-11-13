@@ -507,6 +507,31 @@ def scrape_index_data(page):
         return None
 
 
+def convert_dot_to_comma(rows):
+    """Convert decimal dots to commas for Turkish locale in Google Sheets"""
+    converted_rows = []
+    for row in rows:
+        converted_row = []
+        for cell in row:
+            cell_str = str(cell)
+            # Check if it looks like a number with decimal point
+            # Match patterns like: "12.34", "-5.67", "0.123", etc.
+            # But NOT dates like "13.11.2025" (has multiple dots)
+            if cell_str.count('.') == 1:
+                try:
+                    # Try to parse as float - if successful, it's a number
+                    float(cell_str)
+                    # Replace dot with comma for Turkish locale
+                    converted_row.append(cell_str.replace('.', ','))
+                except ValueError:
+                    # Not a number, keep as is
+                    converted_row.append(cell)
+            else:
+                converted_row.append(cell)
+        converted_rows.append(converted_row)
+    return converted_rows
+
+
 def update_google_sheet(data):
     """Update Google Sheets with scraped data"""
     print("Updating Google Sheet...")
@@ -555,6 +580,9 @@ def update_google_sheet(data):
 
         # Add data rows
         rows_to_add.extend(data['data'])
+
+        # Convert dots to commas for Turkish locale
+        rows_to_add = convert_dot_to_comma(rows_to_add)
 
         # Calculate the starting row
         start_row = len(existing_data) + 1
@@ -773,6 +801,9 @@ def update_google_sheet_index(data):
         for row_data in data['data']:
             if not row_data:
                 continue
+
+            # Convert dots to commas for Turkish locale
+            row_data = convert_dot_to_comma([row_data])[0]
 
             first_col_value = row_data[0].strip()
 
