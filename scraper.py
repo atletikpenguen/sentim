@@ -808,21 +808,23 @@ def update_google_sheet_index(data):
             first_col_value = row_data[0].strip()
 
             if first_col_value in index_map:
-                # UPDATE existing row
+                # UPDATE existing row - only update timestamp (last column)
                 row_num = index_map[first_col_value]
-                print(f"Updating row {row_num}: {first_col_value}")
+                print(f"Updating timestamp for row {row_num}: {first_col_value}")
 
-                # Calculate column range
+                # Only update the last column (Son Çekilme Tarihi)
                 num_cols = len(row_data)
                 if num_cols <= 26:
-                    end_col_letter = chr(64 + num_cols)
+                    last_col_letter = chr(64 + num_cols)
                 else:
                     first_letter = chr(64 + (num_cols - 1) // 26)
                     second_letter = chr(65 + (num_cols - 1) % 26)
-                    end_col_letter = first_letter + second_letter
+                    last_col_letter = first_letter + second_letter
 
-                range_name = f'A{row_num}:{end_col_letter}{row_num}'
-                updates.append({'range': range_name, 'values': [row_data]})
+                # Update only the timestamp column
+                timestamp_value = row_data[-1]  # Last item is timestamp
+                range_name = f'{last_col_letter}{row_num}'
+                updates.append({'range': range_name, 'values': [[timestamp_value]]})
 
             else:
                 # INSERT new row at the end
